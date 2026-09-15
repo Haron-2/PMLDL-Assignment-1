@@ -1,0 +1,10 @@
+# ============================================================
+# PMLDL Assignment 1 — Wine Quality Prediction MLOps Pipeline
+#
+# Core dependencies for the data preparation stage.
+# Airflow / MLflow / FastAPI / Streamlit / Docker-related
+# packages will be added in later stages.
+# ============================================================
+pandas
+numpy
+scikit-learn
