@@ -1,8 +1,9 @@
 # Wine Quality Prediction MLOps Pipeline
 
-> **Status:** ✅ Stages 1–5 completed — EDA, preprocessing, training + MLflow, FastAPI serving
-> (7/7 API tests), Streamlit UI. Test metrics: accuracy **0.7679**, F1 **0.8201**, ROC-AUC **0.8389**.
-> Next: Stage 6 — Docker / Docker Compose deployment (2 containers).
+> **Status:** ✅ Stages 1–7 completed — EDA, preprocessing, training + MLflow, FastAPI (7/7 tests),
+> Streamlit UI, Docker Compose deployment (E2E verified), Airflow orchestration (scheduled runs success).
+> Test metrics: accuracy **0.7679**, F1 **0.8201**, ROC-AUC **0.8389**.
+> Next: Stage 8 — integration tests + final project report.
 
 An automated MLOps pipeline for predicting wine quality based on the two UCI
 Wine Quality datasets (`winequality-red.csv` and `winequality-white.csv`).
@@ -97,6 +98,52 @@ Report: `notebooks/STAGE4_API_REPORT.md`.
 ```
 
 Report: `notebooks/STAGE5_STREAMLIT_REPORT.md`.
+
+## Stage 6 — Docker / Docker Compose (completed)
+
+* `code/deployment/api/Dockerfile` — `python:3.13-slim`, pinned dependencies,
+  model baked into the image (`/app/models/model.joblib`), uvicorn entrypoint.
+* `code/deployment/app/Dockerfile` — Streamlit UI image, `API_URL=http://api:8000`.
+* `docker-compose.yml` — two services; API has an HTTP **healthcheck** and the
+  UI starts only after the API is `service_healthy`.
+* `.dockerignore` keeps the build context small.
+
+```powershell
+docker compose up -d --build   # build + start (API :8000, UI :8501)
+docker compose down            # stop
+```
+
+Verified: images build; API `healthy`; host `POST /predict` → `Poor` p=0.0333
+(1.0 identical to local run); invalid payload → 422; UI `/_stcore/health` →
+`ok`; container→container E2E (`e2e_check.py` inside the app container) →
+**PASSED** (white sample p=0.4033 — matches the local artifact exactly).
+Report: `notebooks/STAGE6_DOCKER_REPORT.md`.
+
+## Stage 7 — Airflow Orchestration (completed)
+
+* `services/airflow/Dockerfile` — `apache/airflow:2.10.5-python3.12` + a
+  dedicated `/opt/venv` with the **exact training versions** (sklearn 1.9.1,
+  pandas 3.0.5, numpy 2.5.3, joblib 1.6.0, mlflow 3.16.0) so tasks can load
+  the model without version drift.
+* `services/airflow/docker-compose.airflow.yml` — single-container
+  `airflow standalone` (SequentialExecutor + sqlite), repo bind-mounted at
+  `/opt/airflow/project`, DAGs at `/opt/airflow/dags`, UI on `:8080`.
+* `services/airflow/dags/wine_quality_pipeline.py` — DAG
+  `verify_raw_data → preprocess → train_model → evaluate_model`,
+  `schedule="*/5 * * * *"`, `catchup=False`, `retries=2`, `max_active_runs=1`.
+* `services/airflow/scripts/verify_raw.py` — fail-fast raw data check
+  (1599 red / 4898 white rows).
+
+```powershell
+docker compose -f services\airflow\docker-compose.airflow.yml up -d --build
+# UI: http://localhost:8080 (airflow standalone admin user)
+docker compose -f services\airflow\docker-compose.airflow.yml down
+```
+
+Verified: no import errors; manual trigger **success**; scheduled runs
+(23:00, 23:05 UTC) **success** — all 4 tasks green (0.4s / 3.3s / 19.2s /
+7.7s); artifacts persisted to the host through the bind mount.
+Report: `notebooks/STAGE7_AIRFLOW_REPORT.md`.
 
 ## Planned Technology Stack
 
@@ -200,5 +247,6 @@ pipeline stages are implemented.
 - [x] Stage 3: RandomForest training (single Pipeline artifact) + MLflow tracking + independent evaluation
 - [x] Stage 4: FastAPI serving endpoint with strict validation (7/7 integration tests)
 - [x] Stage 5: Streamlit UI (sliders, health status, probability display)
-- [ ] Docker / Docker Compose deployment (2 containers: API + UI)
-- [ ] Airflow DAG for the automated pipeline
+- [x] Stage 6: Docker Compose deployment (API + UI, healthcheck, E2E verified)
+- [x] Stage 7: Airflow DAG on 5-min schedule (manual + scheduled runs success)
+- [ ] Stage 8: integration tests + final project report
