@@ -1,9 +1,9 @@
 # Wine Quality Prediction MLOps Pipeline
 
-> **Status:** ✅ Stages 1–2 completed — EDA (`notebooks/STAGE1_EDA_REPORT.md`) and the deterministic
-> preprocessing pipeline (`code/datasets/preprocess.py`, `notebooks/STAGE2_DATA_ENGINEERING_REPORT.md`).
-> Next: Stage 3 — RandomForest training with MLflow tracking (`code/models/train.py`).
-> No model is trained yet, and no metrics (accuracy, F1, etc.) are reported yet.
+> **Status:** ✅ Stages 1–3 completed — EDA, deterministic preprocessing, RandomForest training with
+> MLflow tracking (`notebooks/STAGE3_MODEL_ENGINEERING_REPORT.md`).
+> Test metrics: accuracy **0.7679**, F1 **0.8201**, ROC-AUC **0.8389**.
+> Next: Stage 4 — FastAPI model-serving endpoint (`code/deployment/api/`).
 
 An automated MLOps pipeline for predicting wine quality based on the two UCI
 Wine Quality datasets (`winequality-red.csv` and `winequality-white.csv`).
@@ -45,6 +45,29 @@ Artifacts produced (Git-ignored, reproducible byte-for-byte — two consecutive 
 SHA-256): `data/processed/train.csv` (4256 × 14), `data/processed/test.csv` (1064 × 14),
 `models/preprocessor.joblib`. Output schema: 11 numeric features + `wine_type_red` + `wine_type_white`
 + `target` (no `quality`). Built-in output validation: **13/13 checks pass**.
+
+## Stage 3 — Model Engineering (completed)
+
+* `code/models/train.py` — fits a **single sklearn `Pipeline`** (Stage 2
+  preprocessor + `RandomForestClassifier(n_estimators=300, random_state=42)`)
+  on the raw train split and saves `models/model.joblib`; logs params,
+  metrics, tags and the model to MLflow (sqlite backend `mlflow.db`,
+  experiment `wine-quality-prediction`).
+* `code/models/evaluate.py` — standalone verification: reloads the artifact,
+  rebuilds the test split, recomputes metrics and cross-checks them against
+  `models/metrics.json` (6/6 PASS, tol 1e-9); renders
+  `notebooks/figures/fig6_confusion_matrix.png`.
+* `notebooks/STAGE3_MODEL_ENGINEERING_REPORT.md` — full report.
+
+Test metrics: accuracy **0.7679** · precision **0.7963** · recall **0.8453** ·
+F1 **0.8201** · ROC-AUC **0.8389** (baseline 0.6259, +14.2 pp).
+
+```powershell
+.venv\Scripts\python.exe code\models\train.py      # train + MLflow logging
+.venv\Scripts\python.exe code\models\evaluate.py   # independent re-evaluation
+```
+
+MLflow UI (optional): `.venv\Scripts\mlflow ui --backend-store-uri sqlite:///mlflow.db`.
 
 ## Planned Technology Stack
 
@@ -145,9 +168,8 @@ pipeline stages are implemented.
 - [x] Download and merge the UCI Wine Quality datasets
 - [x] Stage 1 EDA: data quality, duplicates, outliers, target, correlations — decisions fixed in `notebooks/STAGE1_EDA_REPORT.md`
 - [x] Stage 2: deterministic preprocessing pipeline (`preprocess.py`) — clean → target → split → transform → validate, byte-identical reruns
-- [ ] Model training and evaluation
+- [x] Stage 3: RandomForest training (single Pipeline artifact) + MLflow tracking + independent evaluation
 - [ ] Airflow DAG for the automated pipeline
-- [ ] MLflow experiment tracking
 - [ ] FastAPI model-serving endpoint
 - [ ] Streamlit UI
 - [ ] Docker / Docker Compose deployment
