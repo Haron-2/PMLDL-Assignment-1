@@ -1,0 +1,21 @@
+# Keep the Docker build context small; images copy only what they need.
+.git/
+.venv/
+venv/
+data/
+notebooks/
+services/
+mlflow.db
+mlruns/
+mlartifacts/
+.vscode/
+.idea/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+.dockerignore
+docker-compose.yml

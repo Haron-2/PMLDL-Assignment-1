@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: code/deployment/api/Dockerfile
+    image: wine-quality-api:latest
+    container_name: wine-api
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_VERSION=rf-300-baseline
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+      dockerfile: code/deployment/app/Dockerfile
+    image: wine-quality-app:latest
+    container_name: wine-app
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
