@@ -1,8 +1,8 @@
 # Wine Quality Prediction MLOps Pipeline
 
-> **Status:** 🚧 Stage 1 (Data Engineering / EDA) is **completed** — the analysis, cleaning decisions and
-> figures are documented in [`notebooks/STAGE1_EDA_REPORT.md`](notebooks/STAGE1_EDA_REPORT.md).
-> Next: Stage 2 — implement `code/datasets/preprocess.py` from the specification in that report.
+> **Status:** ✅ Stages 1–2 completed — EDA (`notebooks/STAGE1_EDA_REPORT.md`) and the deterministic
+> preprocessing pipeline (`code/datasets/preprocess.py`, `notebooks/STAGE2_DATA_ENGINEERING_REPORT.md`).
+> Next: Stage 3 — RandomForest training with MLflow tracking (`code/models/train.py`).
 > No model is trained yet, and no metrics (accuracy, F1, etc.) are reported yet.
 
 An automated MLOps pipeline for predicting wine quality based on the two UCI
@@ -26,6 +26,25 @@ all outlier rows are kept (wholesale removal would lose 20.6% of data and collap
 25.6% → 16.7%); target `quality > 5 → 1`; `wine_type` one-hot encoded; all 11 numeric features kept
 (max pair |r| = 0.72); 80/20 stratified split (`random_state=42` → 4256/1064); dedup **before** the split,
 all fitted preprocessing on train only (no leakage).
+
+## Stage 2 — Data Engineering / Preprocessing (completed)
+
+* `code/datasets/preprocess.py` — deterministic, CWD-independent implementation of the Stage 1 spec:
+  merge → fail-fast validation → exact-duplicate removal (1177 rows, 18.12% → **5320**) → binary target
+  (`quality > 5 → 1`) → stratified 80/20 split (`random_state=42` → **4256 / 1064**) → `ColumnTransformer`
+  (11 numeric passthrough + one-hot `wine_type`) fitted **on train only**.
+* `notebooks/STAGE2_DATA_ENGINEERING_REPORT.md` — full report with numbers, artifact hashes and validation results.
+
+Run it (from anywhere; regenerates all artifacts):
+
+```powershell
+.venv\Scripts\python.exe code\datasets\preprocess.py
+```
+
+Artifacts produced (Git-ignored, reproducible byte-for-byte — two consecutive runs yield identical
+SHA-256): `data/processed/train.csv` (4256 × 14), `data/processed/test.csv` (1064 × 14),
+`models/preprocessor.joblib`. Output schema: 11 numeric features + `wine_type_red` + `wine_type_white`
++ `target` (no `quality`). Built-in output validation: **13/13 checks pass**.
 
 ## Planned Technology Stack
 
@@ -116,16 +135,16 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-At this stage `requirements.txt` contains only the core data-preparation
-dependencies: `pandas`, `numpy`, `scikit-learn`. Airflow, MLflow, FastAPI,
-Streamlit and Docker-related packages will be added later, when the
-corresponding pipeline stages are implemented.
+At this stage `requirements.txt` contains the data-preparation dependencies:
+`pandas`, `numpy`, `scikit-learn`, `matplotlib`, `joblib`. MLflow, FastAPI,
+Streamlit and Docker-related packages are added when the corresponding
+pipeline stages are implemented.
 
 ## Roadmap
 
 - [x] Download and merge the UCI Wine Quality datasets
 - [x] Stage 1 EDA: data quality, duplicates, outliers, target, correlations — decisions fixed in `notebooks/STAGE1_EDA_REPORT.md`
-- [ ] Data cleaning + binary target `good_quality` + train/test split (Stage 2: implement `code/datasets/preprocess.py` per the report spec)
+- [x] Stage 2: deterministic preprocessing pipeline (`preprocess.py`) — clean → target → split → transform → validate, byte-identical reruns
 - [ ] Model training and evaluation
 - [ ] Airflow DAG for the automated pipeline
 - [ ] MLflow experiment tracking
