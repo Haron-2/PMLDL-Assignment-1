@@ -1,9 +1,9 @@
 # Wine Quality Prediction MLOps Pipeline
 
-> **Status:** ✅ Stages 1–7 completed — EDA, preprocessing, training + MLflow, FastAPI (7/7 tests),
-> Streamlit UI, Docker Compose deployment (E2E verified), Airflow orchestration (scheduled runs success).
+> **Status:** ✅ **All 8 stages completed** — EDA → preprocessing → training+MLflow → FastAPI →
+> Streamlit → Docker Compose → Airflow (5-min schedule) → integration tests.
+> Final report: [`notebooks/FINAL_PROJECT_REPORT.md`](notebooks/FINAL_PROJECT_REPORT.md).
 > Test metrics: accuracy **0.7679**, F1 **0.8201**, ROC-AUC **0.8389**.
-> Next: Stage 8 — integration tests + final project report.
 
 An automated MLOps pipeline for predicting wine quality based on the two UCI
 Wine Quality datasets (`winequality-red.csv` and `winequality-white.csv`).
@@ -145,6 +145,18 @@ Verified: no import errors; manual trigger **success**; scheduled runs
 7.7s); artifacts persisted to the host through the bind mount.
 Report: `notebooks/STAGE7_AIRFLOW_REPORT.md`.
 
+## Stage 8 — Integration Tests & Final Report (completed)
+
+* `code/tests/integration_test.py` — re-runs the entire chain back-to-back
+  (verify raw → preprocess → train+MLflow → evaluate → API tests → compose
+  config validation) and asserts artifacts/metrics sanity: **8/8 checks PASS**.
+* `notebooks/FINAL_PROJECT_REPORT.md` — final project report (architecture,
+  stage results, verification matrix, reproducibility, security, quickstart).
+
+```powershell
+.venv\Scripts\python.exe code\tests\integration_test.py
+```
+
 ## Planned Technology Stack
 
 | Area | Technology |
@@ -249,4 +261,6 @@ pipeline stages are implemented.
 - [x] Stage 5: Streamlit UI (sliders, health status, probability display)
 - [x] Stage 6: Docker Compose deployment (API + UI, healthcheck, E2E verified)
 - [x] Stage 7: Airflow DAG on 5-min schedule (manual + scheduled runs success)
-- [ ] Stage 8: integration tests + final project report
+- [x] Stage 8: end-to-end integration test (8/8) + final project report
+
+**Project complete.** See [`notebooks/FINAL_PROJECT_REPORT.md`](notebooks/FINAL_PROJECT_REPORT.md).
