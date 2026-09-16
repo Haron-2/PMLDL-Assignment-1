@@ -1,9 +1,8 @@
 # Wine Quality Prediction MLOps Pipeline
 
-> **Status:** ✅ Stages 1–3 completed — EDA, deterministic preprocessing, RandomForest training with
-> MLflow tracking (`notebooks/STAGE3_MODEL_ENGINEERING_REPORT.md`).
-> Test metrics: accuracy **0.7679**, F1 **0.8201**, ROC-AUC **0.8389**.
-> Next: Stage 4 — FastAPI model-serving endpoint (`code/deployment/api/`).
+> **Status:** ✅ Stages 1–5 completed — EDA, preprocessing, training + MLflow, FastAPI serving
+> (7/7 API tests), Streamlit UI. Test metrics: accuracy **0.7679**, F1 **0.8201**, ROC-AUC **0.8389**.
+> Next: Stage 6 — Docker / Docker Compose deployment (2 containers).
 
 An automated MLOps pipeline for predicting wine quality based on the two UCI
 Wine Quality datasets (`winequality-red.csv` and `winequality-white.csv`).
@@ -68,6 +67,36 @@ F1 **0.8201** · ROC-AUC **0.8389** (baseline 0.6259, +14.2 pp).
 ```
 
 MLflow UI (optional): `.venv\Scripts\mlflow ui --backend-store-uri sqlite:///mlflow.db`.
+
+## Stage 4 — FastAPI Serving (completed)
+
+* `code/deployment/api/main.py` — `GET /health`, `POST /predict`, `GET /docs`;
+  loads the single-artifact `Pipeline` once at startup (`MODEL_PATH` env override).
+* `code/deployment/api/schemas.py` — Pydantic v2 schemas with dataset-named
+  aliases, physical bounds, `wine_type` enum and a `free ≤ total SO2` rule.
+* `code/deployment/api/test_api.py` — launches a **real uvicorn server** and
+  runs 7 integration tests (valid red/white predictions, missing field,
+  invalid type, SO2 inconsistency, non-numeric value → 422). **7/7 PASS.**
+
+```powershell
+.venv\Scripts\python.exe -m uvicorn main:app --app-dir code\deployment\api --port 8000   # serve
+.venv\Scripts\python.exe code\deployment\api\test_api.py                                # test (port 8123)
+```
+
+Report: `notebooks/STAGE4_API_REPORT.md`.
+
+## Stage 5 — Streamlit UI (completed)
+
+* `code/deployment/app/app.py` — sliders for the 11 features (dataset min/max
+  ranges), wine-type selector, live backend `/health` status in the sidebar,
+  prediction banner + `P(Good)` probability bar, friendly 422/error handling.
+* `API_URL` env var selects the backend (defaults to `http://localhost:8000`).
+
+```powershell
+.venv\Scripts\python.exe -m streamlit run code\deployment\app\app.py
+```
+
+Report: `notebooks/STAGE5_STREAMLIT_REPORT.md`.
 
 ## Planned Technology Stack
 
@@ -169,7 +198,7 @@ pipeline stages are implemented.
 - [x] Stage 1 EDA: data quality, duplicates, outliers, target, correlations — decisions fixed in `notebooks/STAGE1_EDA_REPORT.md`
 - [x] Stage 2: deterministic preprocessing pipeline (`preprocess.py`) — clean → target → split → transform → validate, byte-identical reruns
 - [x] Stage 3: RandomForest training (single Pipeline artifact) + MLflow tracking + independent evaluation
+- [x] Stage 4: FastAPI serving endpoint with strict validation (7/7 integration tests)
+- [x] Stage 5: Streamlit UI (sliders, health status, probability display)
+- [ ] Docker / Docker Compose deployment (2 containers: API + UI)
 - [ ] Airflow DAG for the automated pipeline
-- [ ] FastAPI model-serving endpoint
-- [ ] Streamlit UI
-- [ ] Docker / Docker Compose deployment
