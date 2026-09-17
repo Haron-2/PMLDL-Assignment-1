@@ -14,10 +14,10 @@ Trained a `RandomForestClassifier` (300 trees, `random_state=42`) inside a
 single sklearn `Pipeline` together with the Stage 2 `ColumnTransformer`. The
 one artifact `models/model.joblib` maps **raw** features (11 numeric +
 `wine_type`) to a prediction — training/serving consistency by construction.
-Test metrics: **accuracy 0.7679, precision 0.7963, recall 0.8453, F1 0.8201,
-ROC-AUC 0.8389** (+14.2 pp over the majority-class baseline 0.6259). All
+Test metrics: **accuracy 0.7815, precision 0.8025, recall 0.8643, F1 0.8322,
+ROC-AUC 0.8433** (+15.4 pp over the majority-class baseline 0.6272). All
 params/metrics/model are tracked in MLflow (run
-`936592c4554e4b32899faa2a76abb247`); a standalone re-evaluation reproduced
+`e18e479b1712470c9aad939c4be1449d`); a standalone re-evaluation reproduced
 every metric exactly (6/6 checks, tol 1e-9).
 
 ## 2. Objective
@@ -32,7 +32,7 @@ every metric exactly (6/6 checks, tol 1e-9).
 
 | Aspect | Implementation |
 |--------|----------------|
-| Data flow | `preprocess.py` functions imported and reused verbatim (`load_raw` → validate → dedup → target → split) — no duplicated cleaning logic |
+| Data flow | `preprocess.py` functions imported and reused verbatim (`load_raw` → validate → dedup → IQR filter → target → split) — no duplicated cleaning logic |
 | Model | `RandomForestClassifier(n_estimators=300, max_depth=None, min_samples_split=2, min_samples_leaf=1, random_state=42, n_jobs=-1)` |
 | Artifact | `Pipeline([preprocessor (Stage 2 ColumnTransformer), classifier])` → `models/model.joblib` (32,535,554 B) |
 | Consistency | The pipeline's fitted preprocessor must transform `X_train` **bitwise-identically** to Stage 2's `data/processed/train.csv` (asserted, PASS) |
@@ -50,31 +50,32 @@ remains as the documented fitted-transform artifact.
 
 ## 4. Results
 
-### Test metrics (n = 1064, single artifact on raw features)
+### Test metrics (n = 1057, single artifact on raw features)
 
 | Metric | Value |
 |--------|-------|
-| Accuracy | **0.7679** |
-| Precision (Good = 1) | 0.7963 |
-| Recall (Good = 1) | 0.8453 |
-| F1 (Good = 1) | 0.8201 |
-| ROC-AUC | 0.8389 |
-| Majority-class baseline | 0.6259 (666/1064) → RF is **+14.2 pp** |
+| Accuracy | **0.7815** |
+| Precision (Good = 1) | 0.8025 |
+| Recall (Good = 1) | 0.8643 |
+| F1 (Good = 1) | 0.8322 |
+| ROC-AUC | 0.8433 |
+| Majority-class baseline | 0.6272 (663/1057) → RF is **+15.4 pp** |
 
-Confusion matrix: TN = 254, FP = 144, FN = 103, TP = 563
+Confusion matrix: TN = 253, FP = 141, FN = 90, TP = 573
 (`notebooks/figures/fig6_confusion_matrix.png`).
 
-Per-class (`classification_report`): Poor — P 0.7115 / R 0.6382 / F1 0.6728;
-Good — P 0.7963 / R 0.8453 / F1 0.8201. The model is biased towards the
-majority "Good" class, as expected on a 62.6/37.4 split without resampling
-(out of Stage 1 scope; a candidate for future work, not a Stage 3 decision).
+Per-class (`classification_report`): Poor — P 0.7376 / R 0.6421 / F1 0.6866;
+Good — P 0.8025 / R 0.8643 / F1 0.8322. The model is biased towards the
+majority "Good" class, as expected on the Good-majority split without
+resampling (out of Stage 1 scope; a candidate for future work, not a Stage 3
+decision).
 
 ### MLflow run
 
 | Field | Value |
 |-------|-------|
 | Experiment | `wine-quality-prediction` |
-| Run | `936592c4554e4b32899faa2a76abb247` |
+| Run | `e18e479b1712470c9aad939c4be1449d` |
 | Backend | sqlite: `mlflow.db` (Git-ignored) |
 | Params | 9 (RF hyperparams + split config) |
 | Metrics | 5 |
@@ -107,7 +108,7 @@ majority "Good" class, as expected on a 62.6/37.4 split without resampling
 - MLflow ≥ 3 serializes sklearn models via skops; `sklearn.tree._tree.Tree`
   is passed as a trusted type when logging (the model is our own, produced
   deterministically by this repo's code).
-- Accuracy 0.7679 reflects an untuned baseline (default-ish depth, 300
+- Accuracy 0.7815 reflects an untuned baseline (default-ish depth, 300
   trees). Hyperparameter search is out of scope for this stage.
 - `model.joblib` is ~31 MB (300 trees) — fine for a local API; not tracked
   by Git (regenerable via `train.py`).

@@ -20,7 +20,7 @@
 | 6 | Categorical feature | `wine_type` (red/white) — one-hot encode, fit on train only |
 | 7 | Numerical features | All 11 kept; no correlation-based removal (max pair |r| = 0.72); StandardScaler fit on train |
 | 8 | Dataset size after cleaning | **5320 rows** (red 1359, white 3961) |
-| 9 | Train/test split | **80/20 stratified** on binary target, `random_state=42` → 4256 / 1064 |
+| 9 | Train/test split | **80/20 stratified** on binary target, `random_state=42` → 4256 / 1064 at Stage 1; the final pipeline adds the Stage 2 IQR outlier step → 4227 / 1057 |
 | 10 | Stage 2 | Implement `code/datasets/preprocess.py` per the spec at the end of this report |
 
 ---
@@ -177,7 +177,7 @@ Strongest pairs (cleaned, Pearson): free SO2 × total SO2 **0.720**; density × 
 * No pair exceeds |r| = 0.8 → **no feature removal**; the strongest pairs reflect real wine chemistry (SO2 dosage vs acidity; density vs sugar/alcohol).
 * |corr| with quality: alcohol 0.469 > density 0.326 > volatile acidity 0.265 > chlorides 0.202; the rest < 0.1 — consistent with known UCI wine-quality findings (alcohol is the dominant single predictor).
 * Skewness: chlorides **5.34**, sulphates 1.81, residual sugar 1.71, fixed acidity 1.65, volatile acidity 1.50, free SO2 1.36; density/alcohol/pH ≈ symmetric.
-* Transformation implications: the planned model family is tree-based → **no log/power transforms in Stage 2**. If a linear model family is adopted in Stage 3, revisit `log1p` for the six right-skewed features (decision fitted on train only). StandardScaler (fit on train) is kept in the plan for serving consistency and future model families.
+* Transformation implications: the selected model family is tree-based → **no log/power transforms in Stage 2**. If a linear model family is adopted in Stage 3, revisit `log1p` for the six right-skewed features (decision fitted on train only). StandardScaler (fit on train) is kept in the plan for serving consistency and future model families.
 
 ![Correlation heatmap](figures/fig5_correlation_heatmap.png)
 ## 6. Data leakage rules (Phase 10)
@@ -204,7 +204,7 @@ Safe **BEFORE** the split (no parameters estimated from data):
 6. **Categorical features:** `wine_type` — one-hot encoded, encoder fit on train only, `handle_unknown='ignore'`.
 7. **Numerical features:** all 11 original features kept; no correlation-based removal (max pair |r| = 0.72); no monotone transforms in v1; StandardScaler fit on train only.
 8. **Expected dataset size after cleaning:** 5320 rows × (11 numeric + wine_type + quality + target).
-9. **Expected train/test split:** 80/20, stratified by binary target, `random_state = 42` → train 4256 (~37.4% Poor / 62.6% Good), test 1064.
+9. **Expected train/test split:** 80/20, stratified by binary target, `random_state = 42` → train 4256 / test 1064 as specified here; the implemented pipeline additionally removes 36 pooled-fence IQR outliers before the split (Stage 2) → train 4227 / test 1057.
 10. **Preprocessing implemented in Stage 2:** see the specification below.
 
 ## 8. Stage 2 specification — `code/datasets/preprocess.py`
@@ -216,7 +216,7 @@ load raw red/white csv (sep=';')
 → drop exact duplicates (all 13 cols)                          → 5320 × 13
 → define target: quality → target (0 if <= 5 else 1); quality excluded from X
 → X = 11 numeric features + wine_type;  y = target
-→ train_test_split(test_size=0.2, random_state=42, stratify=y) → 4256 / 1064
+→ train_test_split(test_size=0.2, random_state=42, stratify=y) → 4256 / 1064 (final chain with the Stage 2 IQR step: → 4227 / 1057)
 → fit preprocessing on TRAIN only:
      - OneHotEncoder(wine_type, handle_unknown='ignore')
      - StandardScaler(numeric)            [no outlier ops, no imputation]

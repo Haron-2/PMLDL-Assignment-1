@@ -46,7 +46,7 @@ dependency contract.
 | Check | Result |
 |-------|--------|
 | `GET /health` | 200, `model_loaded=true`, `model_type=Pipeline` |
-| `POST /predict` valid red sample | 200 → `Poor`, p=0.0333, `rf-300-baseline` — **identical to the local Stage 4 run** (same artifact) |
+| `POST /predict` valid red sample | 200 → `Poor`, p=0.0467, `rf-300-baseline` — **identical to the local Stage 4 run** (same artifact; current post-IQR model) |
 | `POST /predict` invalid (missing fields) | **422** |
 | `GET :8501/_stcore/health` | 200, body `ok` |
 | `GET :8501/` | 200 (Streamlit SPA shell) |
@@ -57,7 +57,7 @@ dependency contract.
 | Check | Result |
 |-------|--------|
 | `GET http://api:8000/health` | 200, `model_loaded=true`, path `/app/models/model.joblib` |
-| `POST http://api:8000/predict` white sample | 200 → `Poor`, p=0.4033 — **byte-identical probability to the local artifact** |
+| `POST http://api:8000/predict` white sample | 200 → `Good`, p=0.6867 — **byte-identical probability to the local artifact** (current post-IQR model) |
 
 `E2E CHECK: PASSED` (exit 0). Compose network DNS (`http://api:8000`) works.
 

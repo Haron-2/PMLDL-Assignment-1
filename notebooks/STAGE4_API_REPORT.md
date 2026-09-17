@@ -36,7 +36,7 @@ Request keys use the **dataset column names** (Pydantic aliases), e.g.:
 Response:
 
 ```json
-{"prediction": 0, "label": "Poor", "probability_good": 0.0333,
+{"prediction": 0, "label": "Poor", "probability_good": 0.0467,
  "model_version": "rf-300-baseline"}
 ```
 
@@ -66,8 +66,8 @@ overrides the default `<project>/models/model.joblib` (used by Docker);
 | # | Case | Result |
 |---|------|--------|
 | 1 | `GET /health` → 200, `model_loaded=true` (type=Pipeline) | PASS |
-| 2 | valid red sample → 200, consistent schema (`Poor`, p=0.0333) | PASS |
-| 3 | valid white sample → 200 (`Poor`, p=0.4033) | PASS |
+| 2 | valid red sample → 200, consistent schema (`Poor`, p=0.0467) | PASS |
+| 3 | valid white sample → 200 (`Good`, p=0.6867) | PASS |
 | 4 | missing `alcohol` → 422 | PASS |
 | 5 | `wine_type="rose"` → 422 | PASS |
 | 6 | `free SO2 (200) > total SO2 (100)` → 422 | PASS |
