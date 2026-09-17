@@ -37,8 +37,6 @@ NUMERIC_FEATURES = {
 
 st.set_page_config(page_title="Wine Quality Predictor", page_icon="🍷", layout="centered")
 st.title("🍷 Wine Quality Predictor")
-st.caption("Binary prediction of wine quality (Good: quality > 5) from physicochemical tests. "
-           "RandomForest model served by FastAPI.")
 
 
 def api_health() -> tuple[bool, str]:
@@ -51,57 +49,45 @@ def api_health() -> tuple[bool, str]:
         return False, str(exc)
 
 
-with st.sidebar:
-    st.header("Backend")
-    st.write(f"`{API_URL}`")
-    healthy, detail = api_health()
-    if healthy:
-        st.success("API healthy · model loaded")
-    else:
-        st.error(f"API unavailable · {detail}")
-    st.divider()
-    st.markdown("**Request flow**\n\nStreamlit → FastAPI `/predict` → "
-                "sklearn `Pipeline` (one-hot + RandomForest) → JSON response")
+healthy, _ = api_health()
 
 # ---------------- inputs ----------------
-left, right = st.columns([2, 1])
-with right:
-    wine_type = st.selectbox("wine type", ["red", "white"])
-    if wine_type == "red":
-        st.caption("Tip: whites have much higher total SO2 and residual sugar.")
+wine_type = st.selectbox("wine type", ["red", "white"])
 
 payload: dict = {"wine_type": wine_type}
-for label, (lo, hi, default, step) in NUMERIC_FEATURES.items():
-    payload[label] = st.slider(label, min_value=float(lo), max_value=float(hi),
-                               value=float(default), step=float(step),
-                               format="%.4f" if step < 0.01 else "%.2f")
+features = list(NUMERIC_FEATURES.items())
+for i in range(0, len(features), 3):
+    cols = st.columns(3)
+    for col, (label, (lo, hi, default, step)) in zip(cols, features[i : i + 3]):
+        with col:
+            payload[label] = st.slider(label, min_value=float(lo), max_value=float(hi),
+                                       value=float(default), step=float(step),
+                                       format="%.4f" if step < 0.01 else "%.2f")
 
 predict_clicked = st.button("Predict quality", type="primary", use_container_width=True)
 
-# ---------------- request ----------------
+# ---------------- result ----------------
 if predict_clicked:
     if not healthy:
-        st.error(f"Backend at `{API_URL}` is not healthy — start the API first "
-                 f"(`uvicorn main:app --app-dir code/deployment/api --port 8000`).")
+        st.error("API is not healthy or unreachable — start the backend and try again.")
     else:
-        with st.spinner("Querying model ..."):
-            try:
-                resp = requests.post(f"{API_URL}/predict", json=payload, timeout=15)
-            except requests.RequestException as exc:
-                st.error(f"Could not reach the API: {exc}")
+        try:
+            resp = requests.post(f"{API_URL}/predict", json=payload, timeout=15)
+        except requests.RequestException as exc:
+            st.error(f"Could not reach the API: {exc}")
+        else:
+            if resp.status_code == 200:
+                body = resp.json()
+                prediction_col, probability_col = st.columns(2)
+                with prediction_col:
+                    st.metric("Prediction", body["label"])
+                with probability_col:
+                    st.metric("Probability of Good quality",
+                              f"{body['probability_good']:.1%}")
+            elif resp.status_code == 422:
+                st.error("Input validation failed (HTTP 422):")
+                for err in resp.json().get("detail", []):
+                    loc = " → ".join(str(p) for p in err.get("loc", []))
+                    st.write(f"- `{loc}`: {err.get('msg')}")
             else:
-                if resp.status_code == 200:
-                    body = resp.json()
-                    good = body["prediction"] == 1
-                    (st.success if good else st.info)(
-                        f"Prediction: **{body['label']}** (quality {'>' if good else '≤'} 5) "
-                        f"· model `{body['model_version']}`")
-                    st.metric(label="P(Good quality)", value=f"{body['probability_good']:.2%}")
-                    st.progress(body["probability_good"], text="probability of Good")
-                elif resp.status_code == 422:
-                    st.error("Input validation failed (HTTP 422):")
-                    for err in resp.json().get("detail", []):
-                        loc = " → ".join(str(p) for p in err.get("loc", []))
-                        st.write(f"- `{loc}`: {err.get('msg')}")
-                else:
-                    st.error(f"API error HTTP {resp.status_code}: {resp.text}")
+                st.error(f"API error HTTP {resp.status_code}: {resp.text}")
