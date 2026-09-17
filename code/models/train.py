@@ -130,6 +130,8 @@ def main() -> dict:
     pp.validate_dataframe(combined, "raw-combined")
     cleaned = pp.drop_exact_duplicates(combined)
     pp.validate_dataframe(cleaned, "after-dedup")
+    cleaned = pp.remove_iqr_outliers(cleaned)
+    pp.validate_dataframe(cleaned, "after-outliers")
     with_target = pp.add_target(cleaned)
     X_train, X_test, y_train, y_test = pp.make_split(with_target)
 

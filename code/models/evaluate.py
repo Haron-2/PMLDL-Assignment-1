@@ -48,6 +48,7 @@ def main() -> None:
     # deterministic test split, identical to training
     combined = pp.load_raw()
     cleaned = pp.drop_exact_duplicates(combined)
+    cleaned = pp.remove_iqr_outliers(cleaned)
     with_target = pp.add_target(cleaned)
     _, X_test, _, y_test = pp.make_split(with_target)
 

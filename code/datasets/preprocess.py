@@ -4,12 +4,16 @@ Implements the cleaning + preprocessing pipeline fixed by the Stage 1 EDA
 (notebooks/STAGE1_EDA_REPORT.md):
 
     load raw data -> add wine_type -> concat -> validate -> drop exact
-    duplicates -> create target -> train/test split -> fit ColumnTransformer
-    on TRAIN only -> transform -> save artifacts -> validate outputs
+    duplicates -> remove IQR outliers -> create target -> train/test split
+    -> fit ColumnTransformer on TRAIN only -> transform -> save artifacts
+    -> validate outputs
 
 Stage 1 decisions encoded here (do NOT change without re-running the EDA):
     - missing values: none exist (fail-fast validation)
-    - outliers: kept (IQR diagnostics only, no removal)
+    - outliers: rows simultaneous IQR outliers in >= 3 of the 11 numeric
+      features are REMOVED (documented Stage 1 fallback strategy; the
+      assignment requires outlier removal as part of Data Engineering
+      cleaning; wholesale per-feature removal would discard ~20% of rows)
     - duplicates: exact duplicates removed, BEFORE the split (leakage rule)
     - target: quality > 5 -> 1 (Good) else 0 (Poor)
     - wine_type: kept, one-hot encoded
@@ -31,6 +35,7 @@ Usage (from anywhere):
 from __future__ import annotations
 
 import hashlib
+import math
 import sys
 from pathlib import Path
 
@@ -71,6 +76,7 @@ TEST_SIZE = 0.2
 RANDOM_STATE = 42
 QUALITY_THRESHOLD = 5
 WINE_TYPES = {"red", "white"}
+OUTLIER_MIN_FEATURES = 3   # row removed if IQR-outlier in >= 3 numeric features
 
 
 def header(title: str) -> None:
@@ -131,6 +137,53 @@ def drop_exact_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     print(f"[clean] exact duplicates removed: {removed} ({removed / before:.2%})  "
           f"{before} -> {len(cleaned)} rows")
     return cleaned
+
+
+def remove_iqr_outliers(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove rows that are simultaneous IQR outliers in >= OUTLIER_MIN_FEATURES
+    of the 11 numeric features (documented Stage 1 fallback strategy).
+
+    Fences are computed on the deduplicated combined frame (pooled red+white,
+    matching the Stage 1 diagnostic), using ONLY the numeric input features
+    (quality / wine_type / target excluded):
+
+        Q1 = 0.25 quantile, Q3 = 0.75 quantile, IQR = Q3 - Q1
+        lower = Q1 - 1.5 * IQR, upper = Q3 + 1.5 * IQR
+        outlier_count[row] = number of features outside [lower, upper]
+        drop rows with outlier_count >= 3
+
+    Deterministic (quantiles are statistics, no randomness). Runs BEFORE the
+    train/test split, per the assignment's Data Engineering cleaning stage.
+    """
+    flags = {}
+    for col in NUMERIC_FEATURES:
+        q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
+        iqr = q3 - q1
+        lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        flags[col] = (df[col] < lower) | (df[col] > upper)
+    outlier_count = pd.DataFrame(flags, index=df.index).sum(axis=1)
+    mask = outlier_count >= OUTLIER_MIN_FEATURES
+
+    def dist(frame: pd.DataFrame, label: str) -> str:
+        wt = frame[CATEGORICAL].value_counts().sort_index().to_dict()
+        tgt = (frame[QUALITY] > QUALITY_THRESHOLD).astype(int).value_counts().sort_index().to_dict()
+        return f"{label}: n={len(frame)}  wine_type={wt}  target-proxy(q>5)={tgt}"
+
+    kept = df[~mask].reset_index(drop=True)
+    print(f"[outliers] IQR fences on 11 numeric features (pooled), "
+          f"threshold outlier_count >= {OUTLIER_MIN_FEATURES}")
+    print(f"[outliers] {dist(df, 'before')}")
+    print(f"[outliers] rows flagged as outliers : {int(mask.sum())} "
+          f"({mask.sum() / len(df):.2%})")
+    print(f"[outliers] rows removed             : {int(mask.sum())}")
+    print(f"[outliers] {dist(kept, 'after ')}")
+    for k in sorted(outlier_count.unique()):
+        print(f"[outliers] outlier_count == {k}: {int((outlier_count == k).sum())} rows")
+    if kept.empty:
+        raise ValueError("outlier removal emptied the dataset")
+    if kept.isna().sum().sum() != 0:
+        raise ValueError("outlier removal produced NaNs (impossible)")
+    return kept
 
 
 def add_target(df: pd.DataFrame) -> pd.DataFrame:
@@ -197,12 +250,13 @@ def sha256_of(path: Path) -> str:
 
 
 def validate_outputs(train_df: pd.DataFrame, test_df: pd.DataFrame,
-                     feature_names: list[str]) -> None:
+                     feature_names: list[str],
+                     expected_train: int, expected_test: int) -> None:
     """Post-save checks: sizes, schema, NaN, target, artifact presence."""
     header("OUTPUT VALIDATION")
     checks: list[tuple[str, bool, str]] = [
-        ("train rows == 4256", len(train_df) == 4256, f"actual={len(train_df)}"),
-        ("test rows == 1064", len(test_df) == 1064, f"actual={len(test_df)}"),
+        (f"train rows == {expected_train}", len(train_df) == expected_train, f"actual={len(train_df)}"),
+        (f"test rows == {expected_test}", len(test_df) == expected_test, f"actual={len(test_df)}"),
         ("no NaN in train", not train_df.isna().any().any(), ""),
         ("no NaN in test", not test_df.isna().any().any(), ""),
         ("'quality' NOT in outputs",
@@ -240,10 +294,15 @@ def main() -> dict:
     validate_dataframe(combined, "raw-combined")
 
     cleaned = drop_exact_duplicates(combined)
+    dedup_rows = len(cleaned)
     validate_dataframe(cleaned, "after-dedup")
+    cleaned = remove_iqr_outliers(cleaned)
+    validate_dataframe(cleaned, "after-outliers")
 
     with_target = add_target(cleaned)
     X_train, X_test, y_train, y_test = make_split(with_target)
+    expected_test = math.ceil(len(with_target) * TEST_SIZE)
+    expected_train = len(with_target) - expected_test
 
     header("FIT PREPROCESSOR (on TRAIN only - leakage prevention)")
     preprocessor = build_preprocessor()
@@ -268,11 +327,13 @@ def main() -> dict:
     for p in (train_path, test_path, prep_path):
         print(f"  {p.relative_to(PROJECT_ROOT)}  size={p.stat().st_size:>8}  sha256={sha256_of(p)}")
 
-    validate_outputs(pd.read_csv(train_path), pd.read_csv(test_path), feature_names)
+    validate_outputs(pd.read_csv(train_path), pd.read_csv(test_path), feature_names,
+                     expected_train, expected_test)
 
     header("PROCESSING SUMMARY")
     print(f"  raw combined rows          : {len(combined)}")
-    print(f"  exact duplicates removed   : {len(combined) - len(cleaned)}")
+    print(f"  exact duplicates removed   : {len(combined) - dedup_rows}")
+    print(f"  outlier rows removed       : {dedup_rows - len(cleaned)}")
     print(f"  cleaned rows               : {len(cleaned)}")
     print(f"  train / test rows          : {len(train_df)} / {len(test_df)}")
     print(f"  output features            : {len(feature_names)}")
@@ -281,7 +342,8 @@ def main() -> dict:
     print("\nSTAGE 2 PREPROCESSING: DONE")
     return {
         "combined_rows": len(combined),
-        "duplicates_removed": len(combined) - len(cleaned),
+        "duplicates_removed": len(combined) - dedup_rows,
+        "outliers_removed": dedup_rows - len(cleaned),
         "cleaned_rows": len(cleaned),
         "train_rows": len(train_df),
         "test_rows": len(test_df),
